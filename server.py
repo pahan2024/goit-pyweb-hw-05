@@ -12,8 +12,10 @@ from main import PrivatBankClient, CurrencyFormatter, DateProvider
 
 logging.basicConfig(level=logging.INFO)
 
+
 class ChatLogger:
     """Асинхронне логування викликів команд у файл за допомогою aiofile та aiopath."""
+
     LOG_FILE = "exchange_commands.log"
 
     @classmethod
@@ -21,21 +23,22 @@ class ChatLogger:
         path = AsyncPath(cls.LOG_FILE)
         if not await path.exists():
             await path.touch()
-            
+
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        async with async_open(cls.LOG_FILE, 'a', encoding='utf-8') as afp:
+        async with async_open(cls.LOG_FILE, "a", encoding="utf-8") as afp:
             await afp.write(f"[{timestamp}] Виконано команду: {message}\n")
+
 
 class ChatServer:
     clients = set()
 
     async def register(self, ws: WebSocketServerProtocol):
         self.clients.add(ws)
-        logging.info(f'{ws.remote_address} connect')
+        logging.info(f"{ws.remote_address} connect")
 
     async def unregister(self, ws: WebSocketServerProtocol):
         self.clients.remove(ws)
-        logging.info(f'{ws.remote_address} disconnect')
+        logging.info(f"{ws.remote_address} disconnect")
 
     async def send_to_clients(self, message: str):
         if self.clients:
@@ -64,28 +67,37 @@ class ChatServer:
         async with aiohttp.ClientSession() as session:
             client = PrivatBankClient(session)
             formatter = CurrencyFormatter(["USD", "EUR"])
-            
+
             tasks = [client.fetch_rates_for_date(date) for date in dates]
             raw_results = await asyncio.gather(*tasks)
-            
+
             # Форматуємо відповідь у текстовий вигляд для чату
             response_lines = ["📊 Поточний курс валют від ПриватБанку:"]
+            has_data = False  # Прапорець, який покаже, чи знайшли ми бодай одну дату
+
             for raw_data in raw_results:
                 formatted = formatter.format(raw_data)
                 if formatted:
+                    has_data = True
                     for date, currencies in formatted.items():
                         response_lines.append(f"📅 Дата: {date}")
                         for curr, rates in currencies.items():
-                            response_lines.append(f"  {curr} -> Купівля: {rates['purchase']}, Продаж: {rates['sale']}")
-                else:
-                    response_lines.append("⚠️ Не вдалося отримати дані для однієї з дат.")
-            
+                            response_lines.append(
+                                f"  {curr} -> Купівля: {rates['purchase']}, Продаж: {rates['sale']}"
+                            )
+
+            # Якщо даних немає, виводимо безпечне сповіщення
+            if not has_data:
+                response_lines.append(
+                    "⚠️ За вказані дати в архіві ПриватБанку немає даних (перевірте системну дату)."
+                )
+
             await ws.send("\n".join(response_lines))
 
     async def distribute(self, ws: WebSocketServerProtocol):
         async for message in ws:
             cleaned_message = message.strip()
-            
+
             if cleaned_message.startswith("exchange"):
                 parts = cleaned_message.split()
                 await self.handle_exchange_command(ws, parts[1:])
@@ -101,11 +113,13 @@ class ChatServer:
         finally:
             await self.unregister(ws)
 
+
 async def main():
     server = ChatServer()
-    async with websockets.serve(server.ws_handler, 'localhost', 8080):
+    async with websockets.serve(server.ws_handler, "localhost", 8080):
         await asyncio.Future()  # утримує сервер запущеним
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("Сервер чату запущено на ws://localhost:8080")
     asyncio.run(main())

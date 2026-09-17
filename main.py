@@ -19,7 +19,7 @@ class DateProvider:
         today = datetime.now()
         for i in range(days):
             date_obj = today - timedelta(days=i)
-            dates.append(date_obj.strftime("%d.%m.2024"))
+            dates.append(date_obj.strftime("%d.%m.%Y"))
         return dates
 
 
